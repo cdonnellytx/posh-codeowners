@@ -40,7 +40,9 @@
     # ProcessorArchitecture = ''
 
     # Modules that must be imported into the global environment prior to importing this module
-    RequiredModules = @()
+    RequiredModules = @(
+        'posh-git'
+    )
 
     # Assemblies that must be loaded prior to importin  g this module
     RequiredAssemblies = @()
@@ -51,12 +53,12 @@
 
     # Type files (.ps1xml) to be loaded when importing this module
     TypesToProcess = @(
-        'posh-codeowners.types.ps1xml'
+       # 'posh-codeowners.types.ps1xml'
     )
 
     # Format files (.ps1xml) to be loaded when importing this module
     FormatsToProcess = @(
-        'posh-codeowners.format.ps1xml'
+     #   'posh-codeowners.format.ps1xml'
     )
 
     # Modules to import as nested modules of the module specified in RootModule/ModuleToProcess
@@ -64,7 +66,7 @@
 
     # Functions to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no functions to export.
     FunctionsToExport = @(
-        'Get-CodeOwners'
+        'Get-CodeOwners', 'Read-CodeOwners'
     )
 
     # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
