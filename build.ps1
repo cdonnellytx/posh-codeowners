@@ -10,7 +10,7 @@ $reporoot = $PSScriptRoot
 
 $buildDir = Join-Path $reporoot 'build'
 $distDir = Join-Path $reporoot 'dist'
-$srcDir = Join-Path $reporoot "src"
+#$srcDir = Join-Path $reporoot "src"
 
 $DistExcludes = @(
     # never include these
@@ -23,7 +23,7 @@ function CleanStep()
 {
     Get-Item -LiteralPath $buildDir, $distDir -ErrorAction Ignore | Remove-Item -Recurse
 
-    Push-Location -Path $srcDir
+    Push-Location -Path $reporoot
     try
     {
         dotnet clean
@@ -37,7 +37,7 @@ function CleanStep()
 function BuildStep()
 {
     New-Item -ItemType Directory -Path $buildDir | Out-Null
-    Push-Location -Path $srcDir
+    Push-Location -Path $reporoot
     try
     {
         dotnet build --configuration release --output $buildDir
