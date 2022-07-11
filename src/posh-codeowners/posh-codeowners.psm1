@@ -149,3 +149,5 @@ function Get-CodeOwners
         }
     }    
 }
+
+New-Alias -Name 'codeowners' -Value 'Get-CodeOwners'
