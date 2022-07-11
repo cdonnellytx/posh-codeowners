@@ -1,6 +1,7 @@
 #requires -Version 5
 using namespace System
 using namespace System.Collections.Generic
+using namespace System.IO
 
 param
 (
@@ -120,8 +121,8 @@ function Get-CodeOwners
 
     begin
     {
-        $GitRoot = Get-GitDirectory -ErrorAction Stop | Split-Path | Get-Item
-        $Entries = $GitRoot | Get-ChildItem -Depth 2 -Include 'CODEOWNERS' | Read-CodeOwners
+        $GitRoot = Get-GitDirectory -ErrorAction Stop | Split-Path
+        $Entries = Get-ChildItem -LiteralPath:$GitRoot -Depth 2 -Include 'CODEOWNERS' | Read-CodeOwners
         Push-Location $GitRoot
     }
 
@@ -132,19 +133,24 @@ function Get-CodeOwners
 
     process
     {
-        $Items = switch ($PSCmdlet.ParameterSetName)
+        $LiteralPath = switch ($PSCmdlet.ParameterSetName)
         {
             'Path' {
-                $Path ? (Get-Item -Path:$Path) : $GitRoot
+                if (!$Path)
+                {
+                    return $GitRoot
+                }
+
+                $PSCmdlet.GetUnresolvedProviderPathFromPSPath($Path)
             }
-            'LiteralPath' { Get-Item -LiteralPath:$LiteralPath }
+            'LiteralPath' { $LiteralPath }
         }
 
-        $Items | ForEach-Object {
-            $Item = $_
-            $RelativePath = (($Item | Resolve-Path -Relative) -creplace '\\', '/').Substring(1) # skip leading '.'
+        # We cannot guarantee all paths actually exist at this time, they may be historical.
+        $LiteralPath | ForEach-Object {
+            $RelativePath = '/' + [IO.Path]::GetRelativePath($GitRoot, $_) -creplace '\\', '/' # normalize to what Git wants.
             return [PSCustomObject] @{
-                Path = $Item.FullName
+                Path = $_
                 Owners = $Entries | Where-Object { $RelativePath -clike $_.Expression } | ForEach-Object Owners
             }
         }
