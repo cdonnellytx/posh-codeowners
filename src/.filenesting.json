@@ -1,0 +1,10 @@
+{
+  "help": "https://go.microsoft.com/fwlink/?linkid=866610",
+
+  "dependentFileProviders": {
+    "add": {
+      // Nest foo.*.cs under foo.cs
+      "pathSegment": {}
+    }
+  }
+}

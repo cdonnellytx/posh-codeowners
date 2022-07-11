@@ -1,0 +1,9 @@
+<Project>
+
+  <!-- Allows for dynamic nesting of files per a .filenesting.json file. -->
+  <ItemGroup>
+    <ProjectCapability Include="DynamicFileNesting" />
+    <ProjectCapability Include="WebNestingDefaults" />
+  </ItemGroup>
+
+</Project>
