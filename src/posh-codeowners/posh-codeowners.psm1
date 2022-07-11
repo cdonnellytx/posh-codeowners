@@ -95,8 +95,7 @@ function Get-CodeOwners
     param
     (
         # Specifies a path to one or more locations. Wildcards are permitted.
-        [Parameter(Mandatory,
-            Position = 0,
+        [Parameter(Position = 0,
             ParameterSetName = "Path",
             ValueFromPipeline,
             ValueFromPipelineByPropertyName,
@@ -135,7 +134,9 @@ function Get-CodeOwners
     {
         $Items = switch ($PSCmdlet.ParameterSetName)
         {
-            'Path' { Get-Item -Path:$Path }
+            'Path' {
+                $Path ? (Get-Item -Path:$Path) : $GitRoot
+            }
             'LiteralPath' { Get-Item -LiteralPath:$LiteralPath }
         }
 
