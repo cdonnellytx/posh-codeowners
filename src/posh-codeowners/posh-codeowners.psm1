@@ -96,7 +96,8 @@ function Get-CodeOwners
     param
     (
         # Specifies a path to one or more locations. Wildcards are permitted.
-        [Parameter(Position = 0,
+        [Parameter(Mandatory,
+            Position = 0,
             ParameterSetName = "Path",
             ValueFromPipeline,
             ValueFromPipelineByPropertyName,
@@ -133,21 +134,39 @@ function Get-CodeOwners
 
     process
     {
-        $LiteralPath = switch ($PSCmdlet.ParameterSetName)
+        [ref] $dummy = $null
+        [string[]] $ResolvedPaths = switch ($PSCmdlet.ParameterSetName)
         {
             'Path' {
-                if (!$Path)
+                # We cannot guarantee all paths actually exist at this time, they may be historical.
+                foreach ($value in $Path)
                 {
-                    return $GitRoot
+                    try
+                    {
+                        $PSCmdlet.GetResolvedProviderPathFromPSPath($Value, $dummy)
+                    }
+                    catch
+                    {
+                        $PSCmdlet.GetUnresolvedProviderPathFromPSPath($Value)
+                    }
                 }
-
-                $PSCmdlet.GetUnresolvedProviderPathFromPSPath($Path)
             }
-            'LiteralPath' { $LiteralPath }
+            'LiteralPath' {
+                foreach ($value in $LiteralPath)
+                {
+                    try
+                    {
+                        $PSCmdlet.GetResolvedProviderPathFromPSPath($Value, $dummy)
+                    }
+                    catch
+                    {
+                        $PSCmdlet.GetUnresolvedProviderPathFromPSPath($Value)
+                    }
+                }
+            }
         }
 
-        # We cannot guarantee all paths actually exist at this time, they may be historical.
-        $LiteralPath | ForEach-Object {
+        $ResolvedPaths | ForEach-Object {
             $RelativePath = '/' + [IO.Path]::GetRelativePath($GitRoot, $_) -creplace '\\', '/' # normalize to what Git wants.
             return [PSCustomObject] @{
                 Path = $_
