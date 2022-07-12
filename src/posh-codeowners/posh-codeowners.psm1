@@ -2,6 +2,7 @@
 using namespace System
 using namespace System.Collections.Generic
 using namespace System.IO
+using namespace System.Text
 
 param
 (
@@ -9,18 +10,42 @@ param
 
 Set-StrictMode -Version Latest
 
-$DefaultRelativePaths = @(
-    'CODEOWNERS',
-    '.github/CODEOWNERS',
-    '.gitlab/CODEOWNERS'
-)
-
-
 class CodeownerEntry
 {
-    [string] $Path
     [string] $Expression
     [string[]] $Owners
+
+    hidden [Regex] $Pattern
+
+    CodeownerEntry([string] $Expression, [string[]] $Owners)
+    {
+        $this.Expression = $Expression
+        $this.Owners = $Owners
+
+        # Expression to regex
+        $buf = ''
+        if ($Expression -notlike '/*')
+        {
+            $buf += '^(?:.*/)?'
+        }
+        else
+        {
+            $buf += '^'
+        }
+
+        $buf += $Expression -creplace '\*', '[^/]*' # not a directory name
+        $this.Pattern = [Regex] $buf
+    }
+
+    [string] ToString()
+    {
+        return "{0} {1}" -f $this.Expression, ($this.Owners -join " ")
+    }
+
+    [bool] IsMatch([string] $relativePath)
+    {
+        return $this.Pattern.IsMatch($relativePath)
+    }
 }
 
 function Read-CodeOwners
@@ -63,19 +88,12 @@ function Read-CodeOwners
 
         $Items | ForEach-Object {
             switch -regex (($_ | Get-Content) -creplace '(?<!\\)#.*', '') {
-                '(?<Path>[\S^#].*?)\s+(?<Owners>(?<Owner>@\w\S*)(?:\s+(?<Owner>@\w\S*))*)'
+                '(?<Expression>[\S^#].*?)\s+(?<Owners>(?<Owner>@\w\S*)(?:\s+(?<Owner>@\w\S*))*)'
                 {
-                    $path = $Matches.Path
+                    $expression = $Matches.Expression
                     $owners =  ($Matches.Owners -split '\s+')
-                    $expression = switch -regex ($Matches.Path) {
-                        '\*' { $_ } # explicit wildcard
-                        default { "${_}*" } # implicit trailing wildcard
-                    }
-                    [CodeownerEntry] @{
-                        Path = $path
-                        Expression = $expression
-                        Owners = $owners
-                    }
+
+                    [CodeownerEntry]::new($expression, $owners)
                 }
             }
         }
@@ -170,7 +188,7 @@ function Get-CodeOwners
             $RelativePath = '/' + [IO.Path]::GetRelativePath($GitRoot, $_) -creplace '\\', '/' # normalize to what Git wants.
             return [PSCustomObject] @{
                 Path = $_
-                Owners = $Entries | Where-Object { $RelativePath -clike $_.Expression } | ForEach-Object Owners
+                Owners = $Entries | Where-Object { $_.IsMatch($RelativePath) } | ForEach-Object Owners
             }
         }
     }    
