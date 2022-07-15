@@ -135,7 +135,13 @@ function Get-CodeOwners
             HelpMessage = "Literal path to one or more locations.")]
         [Alias("PSPath")]
         [ValidateNotNullOrEmpty()]
-        [string[]] $LiteralPath
+        [string[]] $LiteralPath,
+
+        # Gets the items in the specified locations and in all child items of the locations.
+        [switch] $Recurse,
+
+        # Determines the number of subdirectory levels that are included in the recursion and displays the contents.  Implies `-Recurse`.
+        [uint] $Depth
     )
 
     begin
@@ -143,6 +149,8 @@ function Get-CodeOwners
         $GitRoot = Get-GitDirectory -ErrorAction Stop | Split-Path
         $Entries = Get-ChildItem -LiteralPath:$GitRoot -Depth 2 -Include 'CODEOWNERS' | Read-CodeOwners
         Push-Location $GitRoot
+
+        $RecurseSplat = $PSBoundParameters.ContainsKey('Depth') ? @{ Depth = $Depth } : $Recurse ? @{ Recurse = $Recurse } : $null
     }
 
     end
@@ -182,6 +190,11 @@ function Get-CodeOwners
                     }
                 }
             }
+        }
+
+        if ($RecurseSplat)
+        {
+            $ResolvedPaths = Get-ChildItem @RecurseSplat -LiteralPath:$ResolvedPaths | Select-Object -ExpandProperty FullName
         }
 
         $ResolvedPaths | ForEach-Object {
