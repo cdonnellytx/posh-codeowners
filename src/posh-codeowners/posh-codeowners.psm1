@@ -114,15 +114,14 @@ function Get-CodeOwners
     param
     (
         # Specifies a path to one or more locations. Wildcards are permitted.
-        [Parameter(Mandatory,
-            Position = 0,
+        [Parameter(Position = 0,
             ParameterSetName = "Path",
             ValueFromPipeline,
             ValueFromPipelineByPropertyName,
             HelpMessage = "Path to one or more locations.")]
         [ValidateNotNullOrEmpty()]
         [SupportsWildcards()]
-        [string[]] $Path,
+        [string[]] $Path = '.',
 
         # Specifies a path to one or more locations. Unlike the Path parameter, the value of the LiteralPath parameter is
         # used exactly as it is typed. No characters are interpreted as wildcards. If the path includes escape characters,
@@ -194,7 +193,8 @@ function Get-CodeOwners
 
         if ($RecurseSplat)
         {
-            $ResolvedPaths = Get-ChildItem @RecurseSplat -LiteralPath:$ResolvedPaths | Select-Object -ExpandProperty FullName
+            $Splat = $ResolvedPaths ? $RecurseSplat + @{ LiteralPath = $ResolvedPaths } : $RecurseSplat
+            $ResolvedPaths = Get-ChildItem @Splat | Select-Object -ExpandProperty FullName
         }
 
         $ResolvedPaths | ForEach-Object {
