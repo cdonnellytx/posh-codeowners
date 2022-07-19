@@ -105,12 +105,28 @@ class CodeownerResult
     [Alias('PSPath')]
     [string] $Path
 
+    [Alias('Owner')]
     [string[]] $Owners
+
+    CodeownerResult()
+    {
+    }
+
+    CodeownerResult([string] $Path, [string[]] $Owners)
+    {
+        $this.Path = $Path
+        $this.Owners = $Owners
+    }
 }
 
 function Get-CodeOwners
 {
+    <#
+    .SYNOPSIS
+    Gets the codeowners for the given path.
+    #>
     [CmdletBinding(DefaultParameterSetName = 'Path')]
+    [OutputType([CodeownerResult])]
     param
     (
         # Specifies a path to one or more locations. Wildcards are permitted.
@@ -199,10 +215,10 @@ function Get-CodeOwners
 
         $ResolvedPaths | ForEach-Object {
             $RelativePath = '/' + [IO.Path]::GetRelativePath($GitRoot, $_) -creplace '\\', '/' # normalize to what Git wants.
-            return [PSCustomObject] @{
-                Path = $_
-                Owners = $Entries | Where-Object { $_.IsMatch($RelativePath) } | ForEach-Object Owners
-            }
+            return [CodeownerResult]::new(
+                $_,
+                ($Entries | Where-Object { $_.IsMatch($RelativePath) } | ForEach-Object Owners)
+            )
         }
     }    
 }
