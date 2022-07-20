@@ -4,7 +4,7 @@
     RootModule = 'posh-codeowners.psm1'
 
     # Version number of this module.
-    ModuleVersion = '0.2.1'
+    ModuleVersion = '0.3.0'
 
     # ID used to uniquely identify this module
     GUID = 'a8b24b1a-579e-4638-9ed1-c78c1abfca4d'
@@ -66,7 +66,7 @@
 
     # Functions to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no functions to export.
     FunctionsToExport = @(
-        'Get-CodeOwners', 'Read-CodeOwners'
+        'Get-CodeOwners', 'Read-CodeOwners', 'Get-CommonPath'
     )
 
     # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.

@@ -152,6 +152,62 @@ class CodeownerResult
     }
 }
 
+$sep = [IO.Path]::DirectorySeparatorChar
+
+<#
+.SYNOPSIS
+Gets the common path.
+#>
+function Get-CommonPath
+{
+    [CmdletBinding()]
+    param
+    (
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string[]] $Path
+    )
+
+    # Find the shortest path.
+    $result = $Path[0] # | Sort-Object Length | Select-Object -First 1
+    for ($i = 1; $result -and $i -lt $path.Count; $i++)
+    {
+        $item = $path[$i]
+
+        Write-Warning "${i}: $item"
+
+        # win condition: `item` == `result` or like `result/*`
+        while ($result -and $item -ne $result -and $item -notlike "${result}${sep}*")
+        {
+             $result = Split-Path -LiteralPath $result
+        }
+    }
+
+    return $result
+
+}
+
+function Find-GitRoot
+{
+    [CmdletBinding()]
+    param([string[]] $Path)
+
+    # is there a common git root for these.
+    $CommonPath = Get-CommonPath $Path
+    while ($CommonPath)
+    {
+        # Is CommonPath the root?
+        if (Test-Path -LiteralPath (Join-Path $CommonPath '.git') -PathType Container)
+        {
+            return $CommonPath
+        }
+        $CommonPath = Split-Path -LiteralPath $CommonPath
+    }
+
+    # we give up, use posh-git
+    posh-git\Get-GitDirectory -ErrorAction Stop | Split-Path
+}
+
 function Get-CodeOwners
 {
     <#
@@ -194,11 +250,25 @@ function Get-CodeOwners
 
     begin
     {
-        $GitRoot = Get-GitDirectory -ErrorAction Stop | Split-Path
-        $Entries = Get-ChildItem -LiteralPath:$GitRoot -Depth 2 -Include 'CODEOWNERS' | Read-CodeOwners
-        Push-Location $GitRoot
+        # $GitRoot = Get-GitDirectory -ErrorAction Stop | Split-Path
+        # $Entries = Get-ChildItem -LiteralPath:$GitRoot -Depth 2 -Include 'CODEOWNERS' | Read-CodeOwners
+        #Push-Location $GitRoot
 
         $RecurseSplat = $PSBoundParameters.ContainsKey('Depth') ? @{ Depth = $Depth } : $Recurse ? @{ Recurse = $Recurse } : $null
+
+        $EntriesCache = @{
+        }
+
+        function Read-CodeOwnersForGitRoot([string] $Path)
+        {
+            if (!$EntriesCache.ContainsKey($Path))
+            {
+                Write-Verbose "Read-CodeOwnersForGitRoot: MISS ${Path}"
+                $EntriesCache[$Path] = Get-ChildItem -LiteralPath:$Path -Depth 2 -Include 'CODEOWNERS' | Read-CodeOwners
+            }
+
+            return $EntriesCache[$Path]
+        }
     }
 
     end
@@ -240,18 +310,30 @@ function Get-CodeOwners
             }
         }
 
+        $GitRoot = Find-GitRoot $ResolvedPaths
+        if (!$GitRoot)
+        {
+            Write-Error "Could not find a common path for ${ResolvedPaths}.  This is currently a limitation of the system."
+            return
+        }
+
         if ($RecurseSplat)
         {
             $Splat = $ResolvedPaths ? $RecurseSplat + @{ LiteralPath = $ResolvedPaths } : $RecurseSplat
             $ResolvedPaths = Get-ChildItem @Splat | Select-Object -ExpandProperty FullName
         }
 
-        $ResolvedPaths | ForEach-Object {
-            $RelativePath = '/' + [IO.Path]::GetRelativePath($GitRoot, $_) -creplace '\\', '/' # normalize to what Git wants.
-            return [CodeownerResult]::new(
-                $_,
-                ($Entries | Where-Object { $_.IsMatch($RelativePath) })
-            )
+        if ($ResolvedPaths)
+        {
+            $Entries = Read-CodeOwnersForGitRoot -Path:$GitRoot
+
+            $ResolvedPaths | ForEach-Object {
+                $RelativePath = '/' + [IO.Path]::GetRelativePath($GitRoot, $_) -creplace '\\', '/' # normalize to what Git wants.
+                return [CodeownerResult]::new(
+                    $_,
+                    ($Entries | Where-Object { $_.IsMatch($RelativePath) })
+                )
+            }
         }
     }    
 }
