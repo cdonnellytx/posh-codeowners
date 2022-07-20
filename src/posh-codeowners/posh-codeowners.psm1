@@ -145,6 +145,11 @@ class CodeownerResult
         $this.Path = $Path
         $this.Entries = $Entries
     }
+
+    [string] ToString()
+    {
+        return $this.Path
+    }
 }
 
 function Get-CodeOwners
