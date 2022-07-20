@@ -10,15 +10,43 @@ param
 
 Set-StrictMode -Version Latest
 
+class FileLocation
+{
+    [Alias('PSPath')]
+    [string] $Path
+
+    # The one-based line number.
+    [int] $LineNumber
+
+    FileLocation([string] $Path, [int] $LineNumber)
+    {
+        $this.Path = $Path
+        $this.LineNumber = $LineNumber
+    }
+
+    [string] ToString()
+    {
+        return "{0}:{1}" -f $this.Path, $this.LineNumber
+    }
+}
+
 class CodeownerEntry
 {
+    # The expression for the rule.
     [string] $Expression
+
+    # The list of owners for the rule.
     [string[]] $Owners
+
+    # The location in which this rule was found.
+    [Alias('PSPath')]
+    [FileLocation] $Location
 
     hidden [Regex] $Pattern
 
-    CodeownerEntry([string] $Expression, [string[]] $Owners)
+    CodeownerEntry([string] $Path, [int] $LineNumber, [string] $Expression, [string[]] $Owners)
     {
+        $this.Location = [FileLocation]::new($Path, $LineNumber)
         $this.Expression = $Expression
         $this.Owners = $Owners
 
@@ -87,13 +115,13 @@ function Read-CodeOwners
         }
 
         $Items | ForEach-Object {
-            switch -regex (($_ | Get-Content) -creplace '(?<!\\)#.*', '') {
-                '(?<Expression>[\S^#].*?)\s+(?<Owners>(?<Owner>@\w\S*)(?:\s+(?<Owner>@\w\S*))*)'
-                {
-                    $expression = $Matches.Expression
-                    $owners =  ($Matches.Owners -split '\s+')
-
-                    [CodeownerEntry]::new($expression, $owners)
+            $Item = $_
+            $_ | Get-Content | Select-String '^\s*(?<Expression>[\S^#].*?)\s+(?<Owners>(?:@\w\S*)(?:\s+(?:@\w\S*))*)' | ForEach-Object {
+                $match = $_
+                $match.Matches | ForEach-Object {
+                    $expression = $_.Groups['Expression'].Value
+                    $owners =  $_.Groups['Owners'].Value -csplit '\s+'
+                    [CodeownerEntry]::new($Item.FullName, $match.LineNumber, $expression, $owners)
                 }
             }
         }
@@ -105,22 +133,17 @@ class CodeownerResult
     [Alias('PSPath')]
     [string] $Path
 
-    [Alias('Owner')]
-    [string[]] $Owners
+    # All codeowner entries.
+    [CodeownerEntry[]] $Entries
 
     CodeownerResult()
     {
     }
 
-    CodeownerResult([string] $Path, [string[]] $Owners)
+    CodeownerResult([string] $Path, [CodeownerEntry[]] $Entries)
     {
         $this.Path = $Path
-        $this.Owners = $Owners
-    }
-
-    [string] ToString()
-    {
-        return $this.Path
+        $this.Entries = $Entries
     }
 }
 
@@ -222,7 +245,7 @@ function Get-CodeOwners
             $RelativePath = '/' + [IO.Path]::GetRelativePath($GitRoot, $_) -creplace '\\', '/' # normalize to what Git wants.
             return [CodeownerResult]::new(
                 $_,
-                ($Entries | Where-Object { $_.IsMatch($RelativePath) } | ForEach-Object Owners)
+                ($Entries | Where-Object { $_.IsMatch($RelativePath) })
             )
         }
     }    

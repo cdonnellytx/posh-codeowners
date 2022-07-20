@@ -4,7 +4,7 @@
     RootModule = 'posh-codeowners.psm1'
 
     # Version number of this module.
-    ModuleVersion = '0.1.0'
+    ModuleVersion = '0.2.0'
 
     # ID used to uniquely identify this module
     GUID = 'a8b24b1a-579e-4638-9ed1-c78c1abfca4d'
@@ -53,12 +53,12 @@
 
     # Type files (.ps1xml) to be loaded when importing this module
     TypesToProcess = @(
-       # 'posh-codeowners.types.ps1xml'
+        'posh-codeowners.types.ps1xml'
     )
 
     # Format files (.ps1xml) to be loaded when importing this module
     FormatsToProcess = @(
-     #   'posh-codeowners.format.ps1xml'
+        'posh-codeowners.format.ps1xml'
     )
 
     # Modules to import as nested modules of the module specified in RootModule/ModuleToProcess
