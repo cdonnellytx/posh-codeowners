@@ -4,7 +4,7 @@
     RootModule = 'posh-codeowners.psm1'
 
     # Version number of this module.
-    ModuleVersion = '0.3.0'
+    ModuleVersion = '0.3.1'
 
     # ID used to uniquely identify this module
     GUID = 'a8b24b1a-579e-4638-9ed1-c78c1abfca4d'

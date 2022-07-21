@@ -174,8 +174,6 @@ function Get-CommonPath
     {
         $item = $path[$i]
 
-        Write-Warning "${i}: $item"
-
         # win condition: `item` == `result` or like `result/*`
         while ($result -and $item -ne $result -and $item -notlike "${result}${sep}*")
         {
