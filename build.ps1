@@ -1,29 +1,86 @@
+#!/usr/bin/env -S pwsh -NoProfile
+
 [CmdletBinding()]
 param
 (
     [Parameter(Position = 0, HelpMessage = "The target to run.")]
     [ValidateSet("Clean", "Build", "Dist")]
-    [string] $Target = 'Build'
+    [string] $Target = 'Build',
+
+    [ValidateSet("Debug", "Release")]
+    [string] $Configuration = 'Release'
 )
 
-$reporoot = $PSScriptRoot
+Set-StrictMode -Version Latest
 
-$buildDir = Join-Path $reporoot 'build'
-$distDir = Join-Path $reporoot 'dist'
-#$srcDir = Join-Path $reporoot "src"
+$repoRoot = $PSScriptRoot
 
-$DistExcludes = @(
-    # never include these
-    '*.deps.json',
-    # only include these if nontrival
-    '*.pdb', '*.dll'
-)
+$buildDir = Join-Path $repoRoot 'build'
+$distDir = Join-Path $repoRoot 'dist'
+#$srcDir = Join-Path $repoRoot "src"
+
+$repoUrl = $null
+$gitVersion = $null
+
+$dotnet = Get-Command -Name 'dotnet' -CommandType Application
+
+function dotnet
+{
+    Write-Verbose "dotnet $args"
+    & $dotnet $args
+}
+
+function RestoreDotnetToolStep()
+{
+    Push-Location -Path $repoRoot
+    try
+    {
+        dotnet tool restore
+    }
+    finally
+    {
+        Pop-Location
+    }
+}
+
+function GitVersionStep()
+{
+    $Script:GitVersion = dotnet minver | Where-Object { $_ } | ForEach-Object {
+        $parts = $_ -split '-', 2
+
+        $prerelease = ''
+        if ($parts.Length -eq 2)
+        {
+            $prerelease = $parts[1] -creplace '\.(\d+)$', { ([int] $_.Groups[1].Value).ToString('0000') } -creplace '[^A-Za-z0-9]', ''
+        }
+
+        [PSCustomObject] @{
+            Version = $_
+            ModuleVersion = $parts[0]
+            Prerelease = $prerelease
+        }
+    }
+
+    Write-Verbose "GitVersion: $($Script:GitVersion | ConvertTo-Json)"
+
+    if (!$Script:GitVersion)
+    {
+        Write-Error "GitVersion not set."
+        return
+    }
+
+    $Script:RepoUrl = git config --get remote.origin.url
+    if (!$Script:RepoUrl)
+    {
+        Write-Warning "RepoUrl not set."
+    }
+}
 
 function CleanStep()
 {
     Get-Item -LiteralPath $buildDir, $distDir -ErrorAction Ignore | Remove-Item -Recurse
 
-    Push-Location -Path $reporoot
+    Push-Location -Path $repoRoot
     try
     {
         dotnet clean
@@ -34,13 +91,38 @@ function CleanStep()
     }
 }
 
+function UpdateModuleManifest([string[]] $LiteralPath)
+{
+    # Update the version in the module manifest.
+    $manifest = @{
+        # ModuleVersion is a System.Version.
+        ModuleVersion = $gitVersion.ModuleVersion
+
+        # Pre3 only works with alphanumerics.
+        # MSCRAP: Additionally, Prerelease="" is ignored, Prerelease=" " is treated like "" SHOULD be.
+        # Fortunately it trims whitespace so we don't have to be complicated about it, just add a space at the end.
+        Prerelease    = $gitVersion.Prerelease + " "
+
+        ProjectUri    = $repoUrl
+    }
+
+    Get-ChildItem -LiteralPath $LiteralPath -Include '*.psd1' | ForEach-Object {
+        Update-ModuleManifest @manifest -Path $_.FullName
+        if ($DebugPreference)
+        {
+            Write-Debug (Test-ModuleManifest $_.FullName | Out-String)
+        }
+    }
+}
+
 function BuildStep()
 {
     New-Item -ItemType Directory -Path $buildDir | Out-Null
-    Push-Location -Path $reporoot
+    Push-Location -Path $repoRoot
     try
     {
-        dotnet build --configuration release --output $buildDir
+        dotnet build --configuration $Configuration --output $buildDir
+        UpdateModuleManifest $buildDir
     }
     finally
     {
@@ -50,39 +132,49 @@ function BuildStep()
 
 function DistStep
 {
-    Get-ChildItem -LiteralPath $buildDir -Include '*.psd1' | ForEach-Object {
+    $buildRuntimePath = Join-Path $buildDir 'runtimes'
+    $buildRuntimePaths = Get-ChildItem -LiteralPath $buildRuntimePath -Directory -ErrorAction Ignore
+    Get-ChildItem -LiteralPath $buildDir -Include '*.psd1' | Test-ModuleManifest | ForEach-Object {
         $item = $_
-        $moduleName = $item.BaseName
-        $dest = Join-Path $distDir $moduleName
+        $distModuleDir = Join-Path $distDir $item.Name
 
-        $module = $item | Get-Content -Raw | Invoke-Expression
-        if ($module.ModuleVersion)
-        {
-            $dest = Join-Path $dest $module.ModuleVersion
+        # Copy contents to the destination (dist/PSParquet/VERSION/PSParquet.psm1, not dist/PSParquet/VERSION/build/PSParquet.psm1).
+        dotnet publish --no-build --configuration $configuration --output $distModuleDir $repoRoot
+        UpdateModuleManifest $distModuleDir
+
+        # MSCRAP: We need to *also* copy runtime files; for some reason `dotnet publish` won't do this by default AND only does one runtime at a time.
+        # @see https://vatioz.github.io/programming/poormans-powershell-publish/
+        $buildRuntimePaths | ForEach-Object {
+            $runtime = $_.Name
+            $distModuleRuntimeDir = Join-Path $distModuleDir $runtime
+            dotnet publish --no-restore --configuration $configuration --runtime $runtime --output $distModuleRuntimeDir $repoRoot
         }
 
-        # Copy contents to the destination (dist/PSFoo/VERSION/PSFoo.psm1, not dist/PSFoo/VERSION/build/PSFoo.psm1).
-        Copy-Item -LiteralPath $buildDir -Destination $dest -Recurse -Container:$false -Exclude $DistExcludes
+        # MSCRAP: For PowerShell Desktop we have to publish the Windows variant in the top directory.
+        # Don't know a way to do this that allows the 32-bit version to work.
+        if ($desktopBuildRuntimePath = $buildRuntimePaths | Where-Object Name -eq 'win-x64')
+        {
+            dotnet publish --no-restore --configuration $Configuration --runtime $desktopBuildRuntimePath.Name --output $distModuleDir $repoRoot
+        }
     }
 }
 
-
-
 function Clean()
 {
+    RestoreDotnetToolStep
+    GitVersionStep
     CleanStep
 }
 
 function Build()
 {
-    CleanStep
+    Clean
     BuildStep
 }
 
 function Dist()
 {
-    CleanStep
-    BuildStep
+    Build
     DistStep
 }
 
