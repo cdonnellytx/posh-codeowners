@@ -49,20 +49,7 @@ class CodeownerEntry
         $this.Location = [FileLocation]::new($Path, $LineNumber)
         $this.Expression = $Expression
         $this.Owners = $Owners
-
-        # Expression to regex
-        $buf = ''
-        if ($Expression -notlike '/*')
-        {
-            $buf += '^(?:.*/)?'
-        }
-        else
-        {
-            $buf += '^'
-        }
-
-        $buf += $Expression -creplace '\*', '[^/]*' # not a directory name
-        $this.Pattern = [Regex] $buf
+        $this.Pattern = [CodeownerEntry]::BuildRegex($Expression)
     }
 
     [string] ToString()
@@ -73,6 +60,31 @@ class CodeownerEntry
     [bool] IsMatch([string] $relativePath)
     {
         return $this.Pattern.IsMatch($relativePath)
+    }
+
+    hidden static [Regex] BuildRegex([string] $expression)
+    {
+        $buf = ''
+        if ($Expression -clike '/*')
+        {
+            # Repo-relative
+            $buf += '^'
+        }
+        else
+        {
+            # Relative paths
+            $buf += '^(?:.*/)?'
+        }
+
+        $buf += $Expression -creplace '\*', '[^/]*' # Wildcards should not match a directory name
+
+        # Ensure the end is anchored to string end or a directory.
+        if ($Expression -cnotlike '*/')
+        {
+            $buf += '(\Z|/)'
+        }
+
+        return [Regex] $buf
     }
 }
 
