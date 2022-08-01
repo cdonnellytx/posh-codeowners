@@ -116,7 +116,7 @@ function Read-CodeOwners
 
         $Items | ForEach-Object {
             $Item = $_
-            $_ | Get-Content | Select-String '^\s*(?<Expression>[\S^#].*?)\s+(?<Owners>(?:@\w\S*)(?:\s+(?:@\w\S*))*)' | ForEach-Object {
+            $_ | Get-Content | Select-String '^\s*(?<Expression>[\S-[#]].*?)\s+(?<Owners>(?:@\w\S*)(?:\s+(?:@\w\S*))*)' | ForEach-Object {
                 $match = $_
                 $match.Matches | ForEach-Object {
                     $expression = $_.Groups['Expression'].Value
