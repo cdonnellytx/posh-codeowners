@@ -10,9 +10,10 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{C95C1C51-51B3-40EA-8E3C-AB0080A3CC2A}"
 	ProjectSection(SolutionItems) = preProject
 		.editorconfig = .editorconfig
+		.filenesting.json = .filenesting.json
 		.gitignore = .gitignore
 		build.ps1 = build.ps1
-		deploy.ps1 = deploy.ps1
+		Directory.Build.props = Directory.Build.props
 		README.md = README.md
 	EndProjectSection
 EndProject
