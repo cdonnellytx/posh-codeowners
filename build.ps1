@@ -4,7 +4,7 @@
 param
 (
     [Parameter(Position = 0, HelpMessage = "The target to run.")]
-    [ValidateSet("Clean", "Build", "Dist")]
+    [ValidateSet("GitVersion", "Clean", "Build", "Dist")]
     [string] $Target = 'Build',
 
     [ValidateSet("Debug", "Release")]
@@ -45,13 +45,16 @@ function RestoreDotnetToolStep()
 
 function GitVersionStep()
 {
-    $Script:GitVersion = dotnet minver | Where-Object { $_ } | ForEach-Object {
+    # As PowerShell Prerelease is very particular (alphanumeric ONLY), we ignore height.
+    $Script:GitVersion = dotnet minver --verbosity warn | Where-Object { $_ } | ForEach-Object {
         $parts = $_ -split '-', 2
 
         $prerelease = ''
         if ($parts.Length -eq 2)
         {
-            $prerelease = $parts[1] -creplace '\.(\d+)$', { ([int] $_.Groups[1].Value).ToString('0000') } -creplace '[^A-Za-z0-9]', ''
+            $prerelease = $parts[1] `
+                -creplace '\.(?<Increment>\d+)(?:\.(?<Height>\d+))?$', { "{0:0000}{1:0000}" -f [int] $_.Groups['Increment'].Value, [int] $_.Groups['Height'].Value } `
+                -creplace '[^A-Za-z0-9]', ''
         }
 
         [PSCustomObject] @{
@@ -61,7 +64,7 @@ function GitVersionStep()
         }
     }
 
-    Write-Verbose "GitVersion: $($Script:GitVersion | ConvertTo-Json)"
+    Write-Output "GitVersion: $($Script:GitVersion | Out-String)"
 
     if (!$Script:GitVersion)
     {
@@ -98,7 +101,7 @@ function UpdateModuleManifest([string[]] $LiteralPath)
         # ModuleVersion is a System.Version.
         ModuleVersion = $gitVersion.ModuleVersion
 
-        # Pre3 only works with alphanumerics.
+        # Prerelease only works with alphanumerics.
         # MSCRAP: Additionally, Prerelease="" is ignored, Prerelease=" " is treated like "" SHOULD be.
         # Fortunately it trims whitespace so we don't have to be complicated about it, just add a space at the end.
         Prerelease    = $gitVersion.Prerelease + " "
@@ -106,7 +109,7 @@ function UpdateModuleManifest([string[]] $LiteralPath)
         ProjectUri    = $repoUrl
     }
 
-    Get-ChildItem -LiteralPath $LiteralPath -Include '*.psd1' | ForEach-Object {
+    Get-ChildItem -LiteralPath $LiteralPath -Include '*.psd1' -Recurse | ForEach-Object {
         Update-ModuleManifest @manifest -Path $_.FullName
         if ($DebugPreference)
         {
@@ -138,7 +141,7 @@ function DistStep
         $item = $_
         $distModuleDir = Join-Path $distDir $item.Name
 
-        # Copy contents to the destination (dist/PSParquet/VERSION/PSParquet.psm1, not dist/PSParquet/VERSION/build/PSParquet.psm1).
+        # Publish contents to the destination (dist/MODULE/MODULE.psm1).
         dotnet publish --no-build --configuration $configuration --output $distModuleDir $repoRoot
         UpdateModuleManifest $distModuleDir
 
@@ -151,7 +154,7 @@ function DistStep
         }
 
         # MSCRAP: For PowerShell Desktop we have to publish the Windows variant in the top directory.
-        # Don't know a way to do this that allows the 32-bit version to work.
+        # Don't know a way to do this that allows other architectures to work.
         if ($desktopBuildRuntimePath = $buildRuntimePaths | Where-Object Name -eq 'win-x64')
         {
             dotnet publish --no-restore --configuration $Configuration --runtime $desktopBuildRuntimePath.Name --output $distModuleDir $repoRoot
@@ -159,10 +162,15 @@ function DistStep
     }
 }
 
-function Clean()
+function GitVersion
 {
     RestoreDotnetToolStep
     GitVersionStep
+}
+
+function Clean()
+{
+    GitVersion
     CleanStep
 }
 

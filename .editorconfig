@@ -46,7 +46,7 @@ indent_size              = 2
 trim_trailing_whitespace = true
 
 # Xml config files
-[*.{props,targets,ruleset,config,nuspec,resx,runsettings,vsixmanifest,vsct}]
+[*.{props,targets,ruleset,config,nuspec,resx,runsettings,vsixmanifest,vsct,ps1xml}]
 indent_size              = 2
 insert_final_newline     = false
 trim_trailing_whitespace = true
