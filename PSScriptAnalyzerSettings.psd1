@@ -10,11 +10,6 @@
 @{
     Severity = @('ParseError', 'Error', 'Warning', 'Information')
     ExcludeRules = @(
-        # Does not fit.
-        'PSUseSingularNouns',
-
-        # This one is too flaky.  Keeps demanding "New" be gated.
-        'PSUseShouldProcessForStateChangingFunctions'
     )
 
     Rules = @{
