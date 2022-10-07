@@ -1,14 +1,24 @@
 #!/usr/bin/env -S pwsh -NoProfile
+#requires -version 7
+
+using namespace System.Diagnostics.CodeAnalysis
 
 [CmdletBinding()]
+[SuppressMessageAttribute('PSAvoidUsingPositionalParameters', 'dotnet')]
+[SuppressMessageAttribute('PSAvoidUsingWriteHost', '')]
+[SuppressMessageAttribute('PSReviewUnusedParameter', 'Configuration')]
+[SuppressMessageAttribute('PSReviewUnusedParameter', 'Destination')]
 param
 (
     [Parameter(Position = 0, HelpMessage = "The target to run.")]
-    [ValidateSet("GitVersion", "Clean", "Build", "Dist")]
+    [ValidateSet("GitVersion", "Clean", "Build", "Dist", "LocalPublish")]
     [string] $Target = 'Build',
 
     [ValidateSet("Debug", "Release")]
-    [string] $Configuration = 'Release'
+    [string] $Configuration = 'Release',
+
+    # The destination (if LocalPublish is selected)
+    [string] $Destination
 )
 
 Set-StrictMode -Version Latest
@@ -19,19 +29,32 @@ $buildDir = Join-Path $repoRoot 'build'
 $distDir = Join-Path $repoRoot 'dist'
 #$srcDir = Join-Path $repoRoot "src"
 
+
 $repoUrl = $null
 $gitVersion = $null
 
 $dotnet = Get-Command -Name 'dotnet' -CommandType Application
 
+
+<#
+.SYNOPSIS
+Wrapper for dotnet command.
+#>
 function dotnet
 {
     Write-Verbose "dotnet $args"
     & $dotnet $args
 }
 
+function Write-Header([string] $Name)
+{
+    Write-Host -ForegroundColor White -Object ("`n" + $Name + "`n" + ("=" * $Name.Length) + "`n")
+}
+
 function RestoreDotnetToolStep()
 {
+    Write-Header $MyInvocation.MyCommand.Name
+
     Push-Location -Path $repoRoot
     try
     {
@@ -45,6 +68,8 @@ function RestoreDotnetToolStep()
 
 function GitVersionStep()
 {
+    Write-Header $MyInvocation.MyCommand.Name
+
     # As PowerShell Prerelease is very particular (alphanumeric ONLY), we ignore height.
     $Script:GitVersion = dotnet minver --verbosity warn | Where-Object { $_ } | ForEach-Object {
         $parts = $_ -split '-', 2
@@ -81,6 +106,8 @@ function GitVersionStep()
 
 function CleanStep()
 {
+    Write-Header $MyInvocation.MyCommand.Name
+
     Get-Item -LiteralPath $buildDir, $distDir -ErrorAction Ignore | Remove-Item -Recurse
 
     Push-Location -Path $repoRoot
@@ -104,9 +131,9 @@ function UpdateModuleManifest([string[]] $LiteralPath)
         # Prerelease only works with alphanumerics.
         # MSCRAP: Additionally, Prerelease="" is ignored, Prerelease=" " is treated like "" SHOULD be.
         # Fortunately it trims whitespace so we don't have to be complicated about it, just add a space at the end.
-        Prerelease    = $gitVersion.Prerelease + " "
+        Prerelease = $gitVersion.Prerelease + " "
 
-        ProjectUri    = $repoUrl
+        ProjectUri = $repoUrl
     }
 
     Get-ChildItem -LiteralPath $LiteralPath -Include '*.psd1' -Recurse | ForEach-Object {
@@ -120,6 +147,8 @@ function UpdateModuleManifest([string[]] $LiteralPath)
 
 function BuildStep()
 {
+    Write-Header $MyInvocation.MyCommand.Name
+
     New-Item -ItemType Directory -Path $buildDir | Out-Null
     Push-Location -Path $repoRoot
     try
@@ -133,8 +162,10 @@ function BuildStep()
     }
 }
 
-function DistStep
+function DistStep()
 {
+    Write-Header $MyInvocation.MyCommand.Name
+
     $buildRuntimePath = Join-Path $buildDir 'runtimes'
     $buildRuntimePaths = Get-ChildItem -LiteralPath $buildRuntimePath -Directory -ErrorAction Ignore
     Get-ChildItem -LiteralPath $buildDir -Include '*.psd1' | Test-ModuleManifest | ForEach-Object {
@@ -162,6 +193,14 @@ function DistStep
     }
 }
 
+function LocalPublishStep()
+{
+    Write-Header $MyInvocation.MyCommand.Name
+    # .\build.ps1 -Target Dist && cp -Recurse .\dist\posh-projectsystem\ C:\Users\CRDONNELLY\.local\repos\powershell\Modules\
+
+    Get-ChildItem -Directory -LiteralPath $distDir | Copy-Item -Recurse -Destination $Destination -Force
+}
+
 function GitVersion
 {
     RestoreDotnetToolStep
@@ -186,6 +225,12 @@ function Dist()
     DistStep
 }
 
+function LocalPublish()
+{
+    Dist
+    LocalPublishStep
+}
+
 #
 # Invoke the target
 #
@@ -193,6 +238,3 @@ if (Get-Command -CommandType Function $Target)
 {
     & $Target
 }
-
-
-
