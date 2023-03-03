@@ -1,4 +1,4 @@
-#requires -Version 5
+#requires -Version 7
 using namespace System
 using namespace System.Collections.Generic
 using namespace System.IO
@@ -345,7 +345,7 @@ function Get-CodeOwners
                 )
             }
         }
-    }    
+    }
 }
 
 New-Alias -Name 'codeowners' -Value 'Get-CodeOwners'

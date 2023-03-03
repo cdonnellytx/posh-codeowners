@@ -7,7 +7,7 @@
     Copyright = '(c) Chris R. Donnelly. All rights reserved.'
     Description = 'CODEOWNERS CLI tool'
 
-    PowerShellVersion = '5.1'
+    PowerShellVersion = '7.0'
     ProcessorArchitecture = 'None'
 
     RequiredModules = @(
