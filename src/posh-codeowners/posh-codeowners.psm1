@@ -200,22 +200,34 @@ function Get-CommonPath
 function Find-GitRoot
 {
     [CmdletBinding()]
-    param([string[]] $Path)
+    param
+    (
+        [Parameter(Position = 0, Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string[]] $Path
+    )
+
+    if ($Env:GIT_DIR)
+    {
+        Write-Debug "GitRoot: GIT_DIR is set"
+        return $Env:GIT_DIR -creplace '[\\/]', [Path]::DirectorySeparatorChar
+    }
 
     # is there a common git root for these.
     $CommonPath = Get-CommonPath $Path
     while ($CommonPath)
     {
-        # Is CommonPath the root?
-        if (Test-Path -LiteralPath (Join-Path $CommonPath '.git') -PathType Container)
+        # Is CommonPath the root of this repo or worktree?
+        if (Test-Path -LiteralPath (Join-Path $CommonPath '.git'))
         {
+            Write-Debug "GitRoot: ${Path} => ${CommonPath}"
             return $CommonPath
         }
         $CommonPath = Split-Path -LiteralPath $CommonPath
     }
 
-    # we give up, use posh-git
-    posh-git\Get-GitDirectory -ErrorAction Stop | Split-Path
+    # No common path located.
+    Write-Error "Find-GitRoot: Could not find root for ${ResolvedPaths}"
 }
 
 function Get-CodeOwners
@@ -263,7 +275,6 @@ function Get-CodeOwners
         # $GitRoot = Get-GitDirectory -ErrorAction Stop | Split-Path
         # $Entries = Get-ChildItem -LiteralPath:$GitRoot -Depth 2 -Include 'CODEOWNERS' | Read-CodeOwners
         #Push-Location $GitRoot
-
         $RecurseSplat = $PSBoundParameters.ContainsKey('Depth') ? @{ Depth = $Depth } : $Recurse ? @{ Recurse = $Recurse } : $null
 
         $EntriesCache = @{
@@ -273,8 +284,9 @@ function Get-CodeOwners
         {
             if (!$EntriesCache.ContainsKey($Path))
             {
-                Write-Verbose "Read-CodeOwnersForGitRoot: MISS ${Path}"
+                Write-Verbose "Read-CodeOwnersForGitRoot: CACHE MISS ${Path}"
                 $EntriesCache[$Path] = Get-ChildItem -LiteralPath:$Path -Depth 2 -Include 'CODEOWNERS' | Read-CodeOwners
+                Write-Verbose "=> $($EntriesCache[$Path] | Out-String)"
             }
 
             return $EntriesCache[$Path]
@@ -323,7 +335,6 @@ function Get-CodeOwners
         $GitRoot = Find-GitRoot $ResolvedPaths
         if (!$GitRoot)
         {
-            Write-Error "Could not find a common path for ${ResolvedPaths}.  This is currently a limitation of the system."
             return
         }
 
