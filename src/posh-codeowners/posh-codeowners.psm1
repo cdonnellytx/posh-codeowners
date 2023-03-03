@@ -284,9 +284,9 @@ function Get-CodeOwners
         {
             if (!$EntriesCache.ContainsKey($Path))
             {
-                Write-Verbose "Read-CodeOwnersForGitRoot: CACHE MISS ${Path}"
+                Write-Debug "Read-CodeOwnersForGitRoot: CACHE MISS ${Path}"
                 $EntriesCache[$Path] = Get-ChildItem -LiteralPath:$Path -Depth 2 -Include 'CODEOWNERS' | Read-CodeOwners
-                Write-Verbose "=> $($EntriesCache[$Path] | Out-String)"
+                if ($DebugPreference) { Write-Debug "=> $($EntriesCache[$Path] | Out-String)" }
             }
 
             return $EntriesCache[$Path]
