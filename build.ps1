@@ -201,40 +201,40 @@ function LocalPublishStep()
     Get-ChildItem -Directory -LiteralPath $distDir | Copy-Item -Recurse -Destination $Destination -Force
 }
 
-function GitVersion
+function Invoke-GitVersion
 {
     RestoreDotnetToolStep
     GitVersionStep
 }
 
-function Clean()
+function Invoke-Clean()
 {
-    GitVersion
+    Invoke-GitVersion
     CleanStep
 }
 
-function Build()
+function Invoke-Build()
 {
-    Clean
+    Invoke-Clean
     BuildStep
 }
 
-function Dist()
+function Invoke-Dist()
 {
-    Build
+    Invoke-Build
     DistStep
 }
 
-function LocalPublish()
+function Invoke-LocalPublish()
 {
-    Dist
+    Invoke-Dist
     LocalPublishStep
 }
 
 #
 # Invoke the target
 #
-if (Get-Command -CommandType Function $Target)
+if ($cmd = Get-Command -CommandType Function "Invoke-${Target}")
 {
-    & $Target
+    & $cmd
 }
