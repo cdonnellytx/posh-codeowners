@@ -10,6 +10,8 @@
 @{
     Severity = @('ParseError', 'Error', 'Warning', 'Information')
     ExcludeRules = @(
+        # Does not fit.
+        'PSUseSingularNouns'
     )
     Rules = @{
         PSUseCompatibleSyntax = @{
