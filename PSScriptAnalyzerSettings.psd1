@@ -11,7 +11,6 @@
     Severity = @('ParseError', 'Error', 'Warning', 'Information')
     ExcludeRules = @(
     )
-
     Rules = @{
         PSUseCompatibleSyntax = @{
             # This turns the rule on (setting it to false will turn it off)
