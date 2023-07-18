@@ -207,6 +207,8 @@ function Find-GitRoot
         [string[]] $Path
     )
 
+    Write-Verbose "Finding Git root for $Path"
+
     if ($Env:GIT_DIR)
     {
         Write-Debug "GitRoot: GIT_DIR is set"
@@ -228,6 +230,12 @@ function Find-GitRoot
 
     # No common path located.
     Write-Error "Find-GitRoot: Could not find root for ${ResolvedPaths}"
+}
+
+class PathInfo
+{
+    [string] $OriginalValue
+    [string] $Value
 }
 
 function Get-CodeOwners
@@ -301,18 +309,30 @@ function Get-CodeOwners
     process
     {
         [ref] $dummy = $null
-        [string[]] $ResolvedPaths = switch ($PSCmdlet.ParameterSetName)
+
+        [PathInfo[]] $ResolvedPaths = switch ($PSCmdlet.ParameterSetName)
         {
             'Path' {
                 # We cannot guarantee all paths actually exist at this time, they may be historical.
-                foreach ($value in $Path)
+                foreach ($originalValue in $Path)
                 {
+                    if (![Path]::IsPathFullyQualified($originalValue))
+                    {
+                        [PathInfo] @{
+                            OriginalValue = $value
+                        }
+                    }
+
                     try
                     {
-                        $PSCmdlet.GetResolvedProviderPathFromPSPath($Value, $dummy)
+                        foreach ($resolvedValue in $PSCmdlet.GetResolvedProviderPathFromPSPath($Value, $dummy)
                     }
                     catch
                     {
+                        if ($DebugPreference)
+                        {
+                            Write-Debug "GetResolvedProviderPathFromPSPath $Value failed: $_"
+                        }
                         $PSCmdlet.GetUnresolvedProviderPathFromPSPath($Value)
                     }
                 }
