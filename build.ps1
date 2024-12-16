@@ -10,24 +10,27 @@ using namespace System.Diagnostics.CodeAnalysis
 [SuppressMessageAttribute('PSReviewUnusedParameter', 'Destination')]
 param
 (
+    # The target.
     [Parameter(Position = 0, HelpMessage = "The target to run.")]
     [ValidateSet("GitVersion", "Clean", "Build", "Dist", "LocalPublish")]
     [string] $Target = 'Build',
 
+    # The build configuration.
+    [Parameter()]
     [ValidateSet("Debug", "Release")]
     [string] $Configuration = 'Release',
 
-    # The destination (if LocalPublish is selected)
-    [string] $Destination
+    # The publish dir (if LocalPublish is selected)
+    [Parameter()]
+    [string] $PublishDir
 )
 
 Set-StrictMode -Version Latest
 
 $repoRoot = $PSScriptRoot
 
-$buildDir = Join-Path $repoRoot 'build'
 $distDir = Join-Path $repoRoot 'dist'
-#$srcDir = Join-Path $repoRoot "src"
+$srcDir = Join-Path $repoRoot 'src'
 
 
 $repoUrl = $null
@@ -108,7 +111,7 @@ function CleanStep()
 {
     Write-Header $MyInvocation.MyCommand.Name
 
-    Get-Item -LiteralPath $buildDir, $distDir -ErrorAction Ignore | Remove-Item -Recurse
+    Get-Item -LiteralPath $distDir -ErrorAction Ignore | Remove-Item -Recurse
 
     Push-Location -Path $repoRoot
     try
@@ -138,9 +141,10 @@ function UpdateModuleManifest([string[]] $LiteralPath)
 
     Get-ChildItem -LiteralPath $LiteralPath -Include '*.psd1' -Recurse | ForEach-Object {
         Update-ModuleManifest @manifest -Path $_.FullName
+        $testResult = Test-ModuleManifest $_.FullName
         if ($DebugPreference)
         {
-            Write-Debug (Test-ModuleManifest $_.FullName | Out-String)
+            Write-Debug ($testResult | Out-String)
         }
     }
 }
@@ -149,12 +153,10 @@ function BuildStep()
 {
     Write-Header $MyInvocation.MyCommand.Name
 
-    New-Item -ItemType Directory -Path $buildDir | Out-Null
     Push-Location -Path $repoRoot
     try
     {
-        dotnet build --configuration $Configuration --output $buildDir
-        UpdateModuleManifest $buildDir
+        dotnet build --configuration $Configuration
     }
     finally
     {
@@ -166,30 +168,13 @@ function DistStep()
 {
     Write-Header $MyInvocation.MyCommand.Name
 
-    $buildRuntimePath = Join-Path $buildDir 'runtimes'
-    $buildRuntimePaths = Get-ChildItem -LiteralPath $buildRuntimePath -Directory -ErrorAction Ignore
-    Get-ChildItem -LiteralPath $buildDir -Include '*.psd1' | Test-ModuleManifest | ForEach-Object {
+    Get-ChildItem -Directory -LiteralPath $srcDir | Get-ChildItem -Include '*.psd1' | ForEach-Object {
         $item = $_
-        $distModuleDir = Join-Path $distDir $item.Name
+        $distModuleDir = Join-Path $distDir $item.BaseName
 
-        # Publish contents to the destination (dist/MODULE/MODULE.psm1).
-        dotnet publish --no-build --configuration $configuration --output $distModuleDir $repoRoot
+        # Publish contents to the PublishDir (dist/MODULE/MODULE.psm1).
+        dotnet publish --no-restore --no-build --configuration $configuration "--property:PublishDir=${distModuleDir}" $repoRoot
         UpdateModuleManifest $distModuleDir
-
-        # MSCRAP: We need to *also* copy runtime files; for some reason `dotnet publish` won't do this by default AND only does one runtime at a time.
-        # @see https://vatioz.github.io/programming/poormans-powershell-publish/
-        $buildRuntimePaths | ForEach-Object {
-            $runtime = $_.Name
-            $distModuleRuntimeDir = Join-Path $distModuleDir $runtime
-            dotnet publish --no-restore --configuration $configuration --runtime $runtime --output $distModuleRuntimeDir $repoRoot
-        }
-
-        # MSCRAP: For PowerShell Desktop we have to publish the Windows variant in the top directory.
-        # Don't know a way to do this that allows other architectures to work.
-        if ($desktopBuildRuntimePath = $buildRuntimePaths | Where-Object Name -eq 'win-x64')
-        {
-            dotnet publish --no-restore --configuration $Configuration --runtime $desktopBuildRuntimePath.Name --output $distModuleDir $repoRoot
-        }
     }
 }
 
@@ -198,7 +183,7 @@ function LocalPublishStep()
     Write-Header $MyInvocation.MyCommand.Name
     # .\build.ps1 -Target Dist && cp -Recurse .\dist\posh-projectsystem\ C:\Users\CRDONNELLY\.local\repos\powershell\Modules\
 
-    Get-ChildItem -Directory -LiteralPath $distDir | Copy-Item -Recurse -Destination $Destination -Force
+    Get-ChildItem -Directory -LiteralPath $distDir | Copy-Item -Recurse -Destination $PublishDir -Force
 }
 
 function Invoke-GitVersion
@@ -227,6 +212,13 @@ function Invoke-Dist()
 
 function Invoke-LocalPublish()
 {
+    # Check that PublishDir is set
+    if (!$PublishDir)
+    {
+        Write-Error -Category InvalidArgument "PublishDir cannot be null or empty." -ErrorAction Stop
+        return
+    }
+
     Invoke-Dist
     LocalPublishStep
 }

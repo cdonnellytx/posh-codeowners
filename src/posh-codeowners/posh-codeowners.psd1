@@ -14,7 +14,9 @@
         'posh-git'
     )
 
-    RequiredAssemblies = @()
+    RequiredAssemblies = @(
+        'posh-codeowners.dll'
+    )
 
     FormatsToProcess = @('posh-codeowners.format.ps1xml')
     TypesToProcess = @('posh-codeowners.types.ps1xml')
