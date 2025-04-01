@@ -8,7 +8,7 @@ param
 (
 )
 
-Set-StrictMode -Version Latest
+Set-StrictMode -Version 3.0
 
 class FileLocation
 {
