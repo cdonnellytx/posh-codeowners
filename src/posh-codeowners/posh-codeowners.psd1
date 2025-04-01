@@ -10,9 +10,7 @@
     PowerShellVersion = '7.0'
     ProcessorArchitecture = 'None'
 
-    RequiredModules = @(
-        'posh-git'
-    )
+    RequiredModules = @()
 
     RequiredAssemblies = @(
         'posh-codeowners.dll'
