@@ -166,6 +166,17 @@ class CodeownerResult
 
 $sep = [IO.Path]::DirectorySeparatorChar
 
+# Have to do this because of the way PowerShell and .NET in general handle the path separator, particularly on Windows.
+function EnsureEndingDirectorySeparator([string] $value)
+{
+    if ($value -and $value.Length -gt 0 -and $value[$value.Length - 1] -ne $sep)
+    {
+        return $value + $sep
+    }
+
+    return $value
+}
+
 <#
 .SYNOPSIS
 Gets the common path.
@@ -181,20 +192,41 @@ function Get-CommonPath
     )
 
     # Find the shortest path.
-    $result = $Path[0] # | Sort-Object Length | Select-Object -First 1
+    $result = $PSCmdlet.GetUnresolvedProviderPathFromPSPath($Path[0])
     for ($i = 1; $result -and $i -lt $path.Count; $i++)
     {
-        $item = $path[$i]
+        $item = $PSCmdlet.GetUnresolvedProviderPathFromPSPath($Path[$i])
 
-        # win condition: `item` == `result` or like `result/*`
-        while ($result -and $item -ne $result -and $item -notlike "${result}${sep}*")
+        for ($s = $result; $s; $s = [IO.Path]::GetDirectoryName($s))
         {
-             $result = Split-Path -LiteralPath $result
+            Write-Warning "[$i] $(ConvertTo-Json $item) CMP $(ConvertTo-Json $s)"
+            if ($item -eq $s)
+            {
+                Write-Warning "[$i] $(ConvertTo-Json $item) -eq $(ConvertTo-Json $s) => $(ConvertTo-Json $s)"
+                break <#inner#>
+            }
+
+            if ($item -like "${s}*" -and ($item[$s.Length] -eq $sep -or $s[-1] -eq $sep))
+            {
+                Write-Warning "[$i] $(ConvertTo-Json $item) -like $(ConvertTo-Json "${s}*") => $(ConvertTo-Json $s)"
+                break <#inner#>
+            }
+
+            if ($s -like "${item}*" -and $s[$item.Length] -eq $sep)
+            {
+                Write-Warning "[$i] $(ConvertTo-Json $s) -like $(ConvertTo-Json "${item}*") => $(ConvertTo-Json $s)"
+                $s = $item
+                break <#inner#>
+            }
+
+            Write-Warning "[$i] go up one ($s)"
         }
+
+        Write-Warning "[$i] $(ConvertTo-Json $path[0..$i]) => $(ConvertTo-Json $s)"
+        $result = $s
     }
 
     return $result
-
 }
 
 function Find-GitRoot
@@ -204,7 +236,7 @@ function Find-GitRoot
     (
         [Parameter(Position = 0, Mandatory)]
         [ValidateNotNullOrEmpty()]
-        [string[]] $Path
+        [FileSystemInfo] $Item
     )
 
     if ($Env:GIT_DIR)
@@ -213,21 +245,26 @@ function Find-GitRoot
         return $Env:GIT_DIR -creplace '[\\/]', [Path]::DirectorySeparatorChar
     }
 
-    # is there a common git root for these.
-    $CommonPath = Get-CommonPath $Path
-    while ($CommonPath)
+    $ItemDir = if ($Item -is [DirectoryInfo]) { $Item }
+    elseif ($Item -is [FileInfo]) { $Item.Directory }
+    else
     {
-        # Is CommonPath the root of this repo or worktree?
-        if (Test-Path -LiteralPath (Join-Path $CommonPath '.git'))
+        Write-Error "Unsupported FileSystemInfo type: $($Item.GetType().FullName)"
+        return
+    }
+
+    for ($d = $ItemDir; $d; $d = $d.Parent)
+    {
+        $git = $d.GetFileSystemInfos('.git')
+        if ($git.Count -gt 0)
         {
-            Write-Debug "GitRoot: ${Path} => ${CommonPath}"
-            return $CommonPath
+            Write-Debug "GitRoot: ${Path} => ${$git[0].FullName}"
+            return $git[0].FullName
         }
-        $CommonPath = Split-Path -LiteralPath $CommonPath
     }
 
     # No common path located.
-    Write-Error "Find-GitRoot: Could not find root for ${ResolvedPaths}"
+    Write-Error "Find-GitRoot: Could not find root for ${Item}"
 }
 
 function Get-CodeOwners
@@ -272,13 +309,9 @@ function Get-CodeOwners
 
     begin
     {
-        # $GitRoot = Get-GitDirectory -ErrorAction Stop | Split-Path
-        # $Entries = Get-ChildItem -LiteralPath:$GitRoot -Depth 2 -Include 'CODEOWNERS' | Read-CodeOwners
-        #Push-Location $GitRoot
         $RecurseSplat = $PSBoundParameters.ContainsKey('Depth') ? @{ Depth = $Depth } : $Recurse ? @{ Recurse = $Recurse } : $null
 
-        $EntriesCache = @{
-        }
+        $EntriesCache = @{}
 
         function Read-CodeOwnersForGitRoot([string] $Path)
         {
@@ -295,7 +328,6 @@ function Get-CodeOwners
 
     end
     {
-        Pop-Location
     }
 
     process
@@ -332,29 +364,31 @@ function Get-CodeOwners
             }
         }
 
-        $GitRoot = Find-GitRoot $ResolvedPaths
-        if (!$GitRoot)
-        {
-            return
-        }
+        $ResolvedPaths | Get-Item | ForEach-Object {
+            if ($RecurseSplat)
+            {
+                $Splat = $RecurseSplat + @{ LiteralPath = $_.FullName }
+                Get-ChildItem @Splat
+            }
+            else
+            {
+                $_
+            }
+        } | ForEach-Object {
+            $GitRoot = Find-GitRoot $_
+            if (!$GitRoot)
+            {
+                return
+            }
 
-        if ($RecurseSplat)
-        {
-            $Splat = $ResolvedPaths ? $RecurseSplat + @{ LiteralPath = $ResolvedPaths } : $RecurseSplat
-            $ResolvedPaths = Get-ChildItem @Splat | Select-Object -ExpandProperty FullName
-        }
 
-        if ($ResolvedPaths)
-        {
             $Entries = Read-CodeOwnersForGitRoot -Path:$GitRoot
 
-            $ResolvedPaths | ForEach-Object {
-                $RelativePath = '/' + [IO.Path]::GetRelativePath($GitRoot, $_) -creplace '\\', '/' # normalize to what Git wants.
-                return [CodeownerResult]::new(
-                    $_,
-                    ($Entries | Where-Object { $_.IsMatch($RelativePath) })
-                )
-            }
+            $RelativePath = '/' + [IO.Path]::GetRelativePath($GitRoot, $_.FullName) -creplace '\\', '/' # normalize to what Git wants.
+            return [CodeownerResult]::new(
+                $_,
+                ($Entries | Where-Object { $_.IsMatch($RelativePath) })
+            )
         }
     }
 }

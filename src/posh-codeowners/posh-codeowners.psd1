@@ -13,7 +13,7 @@
     RequiredModules = @()
 
     RequiredAssemblies = @(
-        'posh-codeowners.dll'
+   #     'posh-codeowners.dll'
     )
 
     FormatsToProcess = @('posh-codeowners.format.ps1xml')
@@ -21,8 +21,7 @@
 
     FunctionsToExport = @(
         'Get-CodeOwners',
-        'Read-CodeOwners',
-        'Get-CommonPath'
+        'Read-CodeOwners'
     )
     CmdletsToExport = @()
     VariablesToExport = @()
