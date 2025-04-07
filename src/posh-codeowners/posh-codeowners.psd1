@@ -20,9 +20,9 @@
     TypesToProcess = @('posh-codeowners.types.ps1xml')
 
     FunctionsToExport = @(
+        'Find-CodeOwnersFile',
         'Get-CodeOwners',
-        'Read-CodeOwners',
-        'Get-CommonPath'
+        'Read-CodeOwners'
     )
     CmdletsToExport = @()
     VariablesToExport = @()

@@ -189,7 +189,7 @@ function Get-CommonPath
         # win condition: `item` == `result` or like `result/*`
         while ($result -and $item -ne $result -and $item -notlike "${result}${sep}*")
         {
-             $result = Split-Path -LiteralPath $result
+            $result = Split-Path -LiteralPath $result
         }
     }
 
@@ -228,6 +228,41 @@ function Find-GitRoot
 
     # No common path located.
     Write-Error "Find-GitRoot: Could not find root for ${ResolvedPaths}"
+}
+
+<#
+.SYNOPSIS
+Finds the CODEOWNERS file for the given path.
+#>
+function Find-CodeOwnersFile
+{
+    [CmdletBinding()]
+    param
+    (
+        # The path to search for CODEOWNERS files.
+        [Parameter(Position = 0, Mandatory, ValueFromPipelineByPropertyName)]
+        [Alias("PSPath")]
+        [ValidateNotNullOrEmpty()]
+        [string] $LiteralPath
+    )
+
+    process
+    {
+        # CODEOWNERS locations in order of preference
+        # @see https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+        # @see https://docs.gitlab.com/user/project/codeowners/#codeowners-file
+        # Search global CODEOWNERS files first.
+        'CODEOWNERS', 'docs/CODEOWNERS', '.[a-z]*/CODEOWNERS' |
+            Get-ChildItem -LiteralPath:$LiteralPath -ErrorAction Ignore |
+            Select-Object -First 1 |
+            Tee-Object -Variable result
+
+        if (!$result)
+        {
+            Write-Error "Find-CodeOwnersFile: Could not find CODEOWNERS file in ${LiteralPath}"
+            return
+        }
+    }
 }
 
 function Get-CodeOwners
@@ -272,21 +307,26 @@ function Get-CodeOwners
 
     begin
     {
-        # $GitRoot = Get-GitDirectory -ErrorAction Stop | Split-Path
-        # $Entries = Get-ChildItem -LiteralPath:$GitRoot -Depth 2 -Include 'CODEOWNERS' | Read-CodeOwners
-        #Push-Location $GitRoot
         $RecurseSplat = $PSBoundParameters.ContainsKey('Depth') ? @{ Depth = $Depth } : $Recurse ? @{ Recurse = $Recurse } : $null
 
-        $EntriesCache = @{
-        }
+        $EntriesCache = @{}
 
         function Read-CodeOwnersForGitRoot([string] $Path)
         {
             if (!$EntriesCache.ContainsKey($Path))
             {
-                Write-Debug "Read-CodeOwnersForGitRoot: CACHE MISS ${Path}"
-                $EntriesCache[$Path] = Get-ChildItem -LiteralPath:$Path -Depth 2 -Include 'CODEOWNERS' | Read-CodeOwners
-                if ($DebugPreference) { Write-Debug "=> $($EntriesCache[$Path] | Out-String)" }
+                if ($DebugPreference)
+                {
+                    Write-Debug "Read-CodeOwnersForGitRoot: CACHE MISS ${Path}"
+                    $start = [Stopwatch]::GetTimestamp()
+                }
+
+                $EntriesCache[$Path] = Find-CodeOwnersFile -LiteralPath:$Path | Read-CodeOwners
+
+                if ($DebugPreference)
+                {
+                    Write-Debug "Read-CodeOwnersForGitRoot: read ${Path}, elapsed: $([Stopwatch]::GetElapsedTime($start))$($EntriesCache[$Path] | Out-String)"
+                }
             }
 
             return $EntriesCache[$Path]
