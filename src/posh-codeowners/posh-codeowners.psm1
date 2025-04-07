@@ -257,7 +257,7 @@ function Find-CodeOwnersFile
             Select-Object -First 1 |
             Tee-Object -Variable result
 
-        if (!$result)
+        if (!$?)
         {
             Write-Error "Find-CodeOwnersFile: Could not find CODEOWNERS file in ${LiteralPath}"
             return
