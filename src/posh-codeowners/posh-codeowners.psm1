@@ -321,7 +321,7 @@ function Get-CodeOwners
                     $start = [Stopwatch]::GetTimestamp()
                 }
 
-                $EntriesCache[$Path] = Find-CodeOwnersFile -LiteralPath:$Path | Read-CodeOwners
+                $EntriesCache[$Path] = Find-CodeOwnersFile -ErrorAction Ignore -LiteralPath:$Path | Read-CodeOwners
 
                 if ($DebugPreference)
                 {
