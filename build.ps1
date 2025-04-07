@@ -8,6 +8,7 @@ using namespace System.Diagnostics.CodeAnalysis
 [SuppressMessageAttribute('PSAvoidUsingWriteHost', '')]
 [SuppressMessageAttribute('PSReviewUnusedParameter', 'Configuration')]
 [SuppressMessageAttribute('PSReviewUnusedParameter', 'Destination')]
+[SuppressMessageAttribute('PSReviewUnusedParameter', 'LocalPublishDir')]
 param
 (
     # The target.
@@ -20,9 +21,10 @@ param
     [ValidateSet("Debug", "Release")]
     [string] $Configuration = 'Release',
 
-    # The publish dir (if LocalPublish is selected)
+    # The local publish dir (if LocalPublish is selected).
+    # Ideally this should be an entry in `PSModulePath`.
     [Parameter()]
-    [string] $PublishDir
+    [string] $LocalPublishDir
 )
 
 Set-StrictMode -Version Latest
@@ -164,6 +166,52 @@ function BuildStep()
     }
 }
 
+<#
+.NOTES
+
+dotnet publish structures the native libraries as follows:
+
+PSFileType
+└───runtimes
+    ├───linux-x64
+    │   └───native
+    ├───win-x64
+    │   └───native
+    …
+
+However, at runtime the loader looks for them in
+
+PSFileType
+├───linux-x64
+│   └───native
+├───win-x64
+│   └───native
+…
+
+So we have to rearrange them.
+
+LATER: would be nice if there were some build property I could override, but there doesn't appear to be one.
+
+.LINK
+https://learn.microsoft.com/en-us/powershell/scripting/dev-cross-plat/writing-portable-modules?view=powershell-7.5#dependency-on-native-libraries
+#>
+function Fix-NativeModules($Path)
+{
+    # Move runtimes/** to base
+    if ($runtimesDir = Get-ChildItem -Path:$Path -Filter 'runtimes')
+    {
+        $runtimesDir | Get-ChildItem | Move-Item -Destination $Path -PassThru | ForEach-Object {
+            # Move <RID>/native/** to <RID>
+            if ($native = $_ | Get-ChildItem -Include 'native')
+            {
+                $native | Get-ChildItem | Move-Item -Destination $_.FullName
+                $native | Remove-Item
+            }
+        }
+        $runtimesDir | Remove-Item
+    }
+}
+
 function DistStep()
 {
     Write-Header $MyInvocation.MyCommand.Name
@@ -172,8 +220,10 @@ function DistStep()
         $item = $_
         $distModuleDir = Join-Path $distDir $item.BaseName
 
-        # Publish contents to the PublishDir (dist/MODULE/MODULE.psm1).
+        # Publish contents to the PublishDir property (dist/MODULE).
         dotnet publish --no-restore --no-build --configuration $configuration "--property:PublishDir=${distModuleDir}" $repoRoot
+
+        Fix-NativeModules $distModuleDir
         UpdateModuleManifest $distModuleDir
     }
 }
@@ -181,9 +231,8 @@ function DistStep()
 function LocalPublishStep()
 {
     Write-Header $MyInvocation.MyCommand.Name
-    # .\build.ps1 -Target Dist && cp -Recurse .\dist\posh-projectsystem\ C:\Users\CRDONNELLY\.local\repos\powershell\Modules\
 
-    Get-ChildItem -Directory -LiteralPath $distDir | Copy-Item -Recurse -Destination $PublishDir -Force
+    Get-ChildItem -Directory -LiteralPath $distDir | Copy-Item -Recurse -Destination $LocalPublishDir -Force
 }
 
 function Invoke-GitVersion
@@ -212,10 +261,10 @@ function Invoke-Dist()
 
 function Invoke-LocalPublish()
 {
-    # Check that PublishDir is set
-    if (!$PublishDir)
+    # Check that LocalPublishDir is set
+    if (!$LocalPublishDir)
     {
-        Write-Error -Category InvalidArgument "PublishDir cannot be null or empty." -ErrorAction Stop
+        Write-Error -Category InvalidArgument "LocalPublishDir cannot be null or empty." -ErrorAction Stop
         return
     }
 
