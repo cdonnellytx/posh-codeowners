@@ -253,9 +253,9 @@ function Find-CodeOwnersFile
         # @see https://docs.gitlab.com/user/project/codeowners/#codeowners-file
         # Search global CODEOWNERS files first.
         'CODEOWNERS', 'docs/CODEOWNERS', '.[a-z]*/CODEOWNERS' |
-            Get-ChildItem -LiteralPath:$LiteralPath -ErrorAction Ignore |
-            Select-Object -First 1 |
-            Tee-Object -Variable result
+            ForEach-Object { Join-Path -Path $LiteralPath -ChildPath $_ } |
+            Get-Item -ErrorAction Ignore |
+            Select-Object -First 1
 
         if (!$?)
         {
